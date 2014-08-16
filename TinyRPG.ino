@@ -9,7 +9,9 @@
     webpage: http://p1x.in
     twitter: @w84death
 */
+#include <EEPROM.h>
 #include <ShiftLCD.h>
+
 #define btn_left 0
 #define btn_right 1
 #define pin_data 3
@@ -45,6 +47,8 @@ typedef struct {
 Entity player = {1,2,0,2};
 
 // SPRITES DATA
+// this will be moved to the EEPROM
+// then change to [8][8];
 byte sprites_data[][8] = {
   { // P logo
     B11111,
@@ -214,7 +218,17 @@ void setup()
   
   print_intro();
 }
-  
+
+
+void read_eeprom()
+{
+  for(byte sprite=0; sprite<64; sprite++){
+    for(byte line=0; line<9; line++){
+      sprites_data[sprite][line] = EEPROM.read(sprite+line);
+    }
+  }
+}
+
 void load_sprites(byte select[])
 {  
   for(byte i=0; i<8; i++){
