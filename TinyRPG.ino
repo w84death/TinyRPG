@@ -1,4 +1,4 @@
-/*  
+/*
     P1X by Krzysztof Jankowski
     TinyRPG
 
@@ -12,23 +12,26 @@
 #include <EEPROM.h>
 #include <ShiftLCD.h>
 
-#define btn_left 0
-#define btn_right 1
+#define btn_left 6
+#define btn_right 5
 #define pin_data 3
 #define pin_clock 2
 #define pin_latch 4
 
 #define screen_delay 100
-#define screen_max 16
 #define screen_min 0
+#define screen_max 16
+#define world_min 0
+#define world_max 8
 #define screen_gui_row 0
 #define screen_game_row 1
-#define monolog_delay 1500
+#define monolog_delay 1200
 
 ShiftLCD lcd(pin_data, pin_clock, pin_latch);
 
 unsigned long current_time;
 long refresh_time = 0;
+boolean refresh_screen = true;
 byte game_state = 0;
 
 typedef struct {
@@ -36,7 +39,7 @@ typedef struct {
 } Symbols;
 Symbols symbols = {B10100101};
 
-byte world_map[8][8];
+byte world_map[world_max][screen_max];
 
 typedef struct {
   byte life;
@@ -44,7 +47,7 @@ typedef struct {
   byte pos_map;
   byte pos_screen;
 } Entity;
-Entity player = {1,2,0,2};
+Entity player = {1,1,0,2};
 
 // SPRITES DATA
 // this will be moved to the EEPROM
@@ -139,7 +142,7 @@ byte sprites_data[][8] = {
     B10101,
     B01110,
     B01010,
-    B01010,      
+    B01010,
   },{ // grass1
     B00000,
     B00000,
@@ -207,15 +210,15 @@ byte sprites_data[][8] = {
 };
 
 void setup()
-{   
+{
   pinMode(btn_left,INPUT);
-  pinMode(btn_right,INPUT); 
- 
+  pinMode(btn_right,INPUT);
+
   byte select[8] = {0,1,2,3,4,5,6,7};
   load_sprites(select);
-  
+
   lcd.begin(16, 2);
-  
+
   print_intro();
 }
 
@@ -230,7 +233,7 @@ void read_eeprom()
 }
 
 void load_sprites(byte select[])
-{  
+{
   for(byte i=0; i<8; i++){
     lcd.createChar(i, sprites_data[select[i]]);
   }
@@ -245,7 +248,7 @@ void print_intro()
   lcd.write(0);
   lcd.write(1);
   lcd.write(2);
-  
+
   // ornaments
   lcd.setCursor(0, 1);
   lcd.write(3);
@@ -273,15 +276,17 @@ void blinking_press_btn(){
   }
 }
 
-void print_monolog(String txt_lines[])
+void print_monolog(char* txt_lines[], byte max_lines)
 {
-  lcd.clear();
-  for(byte i=0; i<sizeof(txt_lines); i++){
+  lcd.clear();  
+  for(byte i=0; i<max_lines+1; i++){
     lcd.setCursor(0,0);
     lcd.print(txt_lines[i]);
-    if(sizeof(txt_lines) > i){
-      lcd.setCursor(0,1);
+    lcd.setCursor(0,1);
+    if(i < max_lines-1){      
       lcd.print(txt_lines[i+1]);
+    }else{
+      lcd.print("      . . .     ");
     }
     delay(monolog_delay);
   }
@@ -289,10 +294,15 @@ void print_monolog(String txt_lines[])
 }
 
 void init_game(){
+  for(byte w = world_min; w<world_max; w++){
+    for(byte s = screen_min; s<=screen_max; s++){
+      world_map[w][s] = 0;
+    }
+  }
   byte select[8] = {8,9,10,11,12,13,14,15};
   load_sprites(select);
-  
-  String monolog[] = {
+
+  char* monolog[] = {
     "Welcome, hero!  ",
     "Go to the east. ",
     "You will find   ",
@@ -300,8 +310,8 @@ void init_game(){
     "Ask there for ..",
     "..the quest!    ",
   };
-  print_monolog(monolog);
-   
+  print_monolog(monolog,6);
+
   generate_map_screen();
   game_state = 1;
 }
@@ -331,8 +341,15 @@ void print_gui()
 }
 
 void generate_map_screen(){
-  for(byte i=screen_min; i<screen_max; i++){
-    world_map[player.pos_map][i] = random(2,7);
+  // here will be the world generator
+  // for now it generates random forest
+  // for all map chunks
+  
+  // 0 = empty map
+  if(world_map[player.pos_map][0] == 0){
+    for(byte i=screen_min; i<screen_max; i++){
+      world_map[player.pos_map][i] = random(2,7);
+    }
   }
 }
 
@@ -355,28 +372,43 @@ void print_forground()
 
 void move_player(boolean go_left, boolean go_right)
 {
-  if(go_left && player.pos_screen > screen_min){
-    player.pos_screen--;
+  if(go_left){
+    if(player.pos_screen > screen_min){
+      player.pos_screen--;
+    }else{
+      if(player.pos_map>world_min){
+        player.pos_screen = screen_max-1;
+        player.pos_map--;
+        generate_map_screen();
+      }
+    }
   }
-  if(go_right && player.pos_screen < screen_max){
-    player.pos_screen++;
+  if(go_right){
+    if(player.pos_screen < screen_max-1){
+      player.pos_screen++;
+    }else{
+      if(player.pos_map<world_max-1){
+        player.pos_screen = screen_min;
+        player.pos_map++;
+        generate_map_screen();
+      }
+    }
   }
 }
 
 void loop()
 {
-  current_time = millis();
-  boolean refresh_screen = true;
-  
+  current_time = millis();  
+
   // intro
   if(game_state == 0){
-     blinking_press_btn();     
+     blinking_press_btn();
      if(digitalRead(btn_left) || digitalRead(btn_right)){
        delay(150);
        init_game();
      }
   }
-  
+
   if(game_state == 1){
     if(refresh_screen){
       print_gui();
